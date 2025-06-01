@@ -266,8 +266,15 @@ async def upload_csv_contacts(
                 if engagement_level:
                     existing.engagement_level = engagement_level
                 if summit_history_val:
-                    if not existing.summit_history:
+                    # Ensure summit_history is a list
+                    if isinstance(existing.summit_history, str):
+                        if existing.summit_history:
+                            existing.summit_history = [existing.summit_history]
+                        else:
+                            existing.summit_history = []
+                    elif not existing.summit_history:
                         existing.summit_history = []
+                    # Only append if not already present
                     if summit_history_val not in existing.summit_history:
                         existing.summit_history.append(summit_history_val)
                 db.add(existing)
