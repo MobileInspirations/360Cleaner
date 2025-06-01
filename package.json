@@ -1,0 +1,13 @@
+{
+  "name": "cleaner-root",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "start": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "cd backend && .\\venv\\Scripts\\Activate && python -m uvicorn app.main:app --reload",
+    "frontend": "cd frontend && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+} 

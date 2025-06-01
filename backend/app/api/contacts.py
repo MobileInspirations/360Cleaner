@@ -220,12 +220,80 @@ async def upload_csv_contacts(
     main_bucket: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    # Parse engagement and summit history from file name
-    engagement_level, summit_history_val = parse_engagement_and_history(file.filename)
-    # ... existing code ...
-    # ... CSV logic ...
-    # (Copy from previous upload_contacts, but only for CSV)
-    # ...
+    logger.info(f"Received upload-csv request: {file.filename} with main_bucket={main_bucket}")
+    if not file.filename.endswith('.csv'):
+        logger.error("Upload failed: Only CSV files are supported")
+        raise HTTPException(400, "Only CSV files are supported")
+    try:
+        contents = await file.read()
+        csv_content = contents.decode()
+        csv_file = StringIO(csv_content)
+        reader = csv.DictReader(csv_file)
+        contacts = []
+        emails_seen = set()
+        # Parse engagement and summit history from file name
+        engagement_level, summit_history_val = parse_engagement_and_history(file.filename)
+        for row in reader:
+            email = row.get('Email', '').strip()
+            if not email or email in emails_seen:
+                logger.warning(f"Duplicate or missing email in upload: {email}. Skipping row.")
+                continue
+            emails_seen.add(email)
+            full_name = row.get('First Name', '').strip()
+            contact_id = row.get('Contact ID', '').strip()
+            tags_raw = row.get('Contact Tags', '')
+            tags = [t.strip() for t in tags_raw.split(',') if t.strip()]
+            # Validate or generate UUID
+            try:
+                contact_uuid = uuid.UUID(contact_id) if contact_id else uuid.uuid4()
+            except Exception:
+                contact_uuid = uuid.uuid4()
+            # Upsert by email (email is unique)
+            existing = db.query(Contact).filter(Contact.email == email).first()
+            # Set main bucket flags
+            is_biz = main_bucket == 'biz'
+            is_health = main_bucket == 'health'
+            is_survivalist = main_bucket == 'survivalist'
+            if existing:
+                # Merge tags
+                existing_tags = set(existing.tags or [])
+                all_tags = list(existing_tags.union(tags))
+                existing.tags = all_tags
+                existing.full_name = full_name or existing.full_name
+                existing.is_in_main_bucket_biz = is_biz
+                existing.is_in_main_bucket_health = is_health
+                existing.is_in_main_bucket_survivalist = is_survivalist
+                if engagement_level:
+                    existing.engagement_level = engagement_level
+                if summit_history_val:
+                    if not existing.summit_history:
+                        existing.summit_history = []
+                    if summit_history_val not in existing.summit_history:
+                        existing.summit_history.append(summit_history_val)
+                db.add(existing)
+                logger.info(f"Updated contact: {email} ({existing.id}) with merged tags and main bucket.")
+            else:
+                contact = Contact(
+                    id=contact_uuid,
+                    email=email,
+                    full_name=full_name,
+                    tags=tags,
+                    is_in_main_bucket_biz=is_biz,
+                    is_in_main_bucket_health=is_health,
+                    is_in_main_bucket_survivalist=is_survivalist,
+                    engagement_level=engagement_level,
+                    summit_history=[summit_history_val] if summit_history_val else [],
+                )
+                db.add(contact)
+                logger.info(f"Inserted new contact: {email} ({contact_uuid}) with main bucket.")
+            contacts.append(email)
+        db.commit()
+        logger.info(f"Successfully upserted {len(contacts)} contacts.")
+        return {"total": len(contacts), "success": len(contacts)}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Upload failed: {str(e)}")
+        raise HTTPException(500, str(e))
 
 @router.post("/upload-zip")
 async def upload_zip_contacts(

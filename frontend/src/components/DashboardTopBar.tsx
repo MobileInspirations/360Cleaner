@@ -12,6 +12,30 @@ function DashboardTopBar({ onUploadComplete }: DashboardTopBarProps) {
   const [moreOpen, setMoreOpen] = useState(false)
   const [uploadCsvModalOpen, setUploadCsvModalOpen] = useState(false)
   const [uploadZipModalOpen, setUploadZipModalOpen] = useState(false)
+  const [categorizeStatus, setCategorizeStatus] = useState<'idle' | 'loading' | 'success' | 'error'>("idle")
+  const [categorizeMessage, setCategorizeMessage] = useState<string>("")
+
+  const handleCategorize = async () => {
+    setCategorizeStatus('loading');
+    setCategorizeMessage('Categorizing contacts...');
+    setCategorizeOpen(false);
+    try {
+      const res = await fetch('/api/contacts/categorize', { method: 'POST' });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setCategorizeStatus('success');
+      setCategorizeMessage(data.message || 'Categorization complete!');
+      if (onUploadComplete) onUploadComplete();
+    } catch (e: any) {
+      setCategorizeStatus('error');
+      setCategorizeMessage(e.message || 'Categorization failed.');
+    }
+  };
+
+  const closeCategorizeModal = () => {
+    setCategorizeStatus('idle');
+    setCategorizeMessage('');
+  };
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
@@ -45,7 +69,7 @@ function DashboardTopBar({ onUploadComplete }: DashboardTopBarProps) {
           </button>
           {categorizeOpen && (
             <div className="absolute z-10 mt-2 w-44 bg-white border rounded shadow-lg">
-              <button className="w-full text-left px-4 py-2 hover:bg-gray-100">Auto Categorize</button>
+              <button className="w-full text-left px-4 py-2 hover:bg-gray-100" onClick={handleCategorize}>Auto Categorize</button>
               <button className="w-full text-left px-4 py-2 hover:bg-gray-100">AI Categorize</button>
             </div>
           )}
@@ -70,6 +94,17 @@ function DashboardTopBar({ onUploadComplete }: DashboardTopBarProps) {
         </div>
         <UploadCsvModal open={uploadCsvModalOpen} onClose={() => setUploadCsvModalOpen(false)} onUploadComplete={onUploadComplete} />
         <UploadZipModal open={uploadZipModalOpen} onClose={() => setUploadZipModalOpen(false)} onUploadComplete={onUploadComplete} />
+        {/* Categorize Status Modal */}
+        {categorizeStatus !== 'idle' && (
+          <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+            <div className="bg-white p-6 rounded shadow-lg min-w-[300px] text-center">
+              {categorizeStatus === 'loading' && <div>⏳ {categorizeMessage}</div>}
+              {categorizeStatus === 'success' && <div>✅ {categorizeMessage}</div>}
+              {categorizeStatus === 'error' && <div>❌ {categorizeMessage}</div>}
+              <button className="mt-4 px-4 py-2 bg-blue-500 text-white rounded" onClick={closeCategorizeModal}>OK</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
