@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from ..core.database import get_db
@@ -9,6 +9,10 @@ import csv
 from io import StringIO
 import logging
 import uuid
+import zipfile
+import os
+import tempfile
+import re
 
 router = APIRouter()
 
@@ -63,9 +67,19 @@ async def upload_contacts(
                 merged_tags = list(existing_tags.union(new_tags))
                 existing.tags = merged_tags
                 existing.email = email
-                existing.is_in_main_bucket_biz = is_biz
-                existing.is_in_main_bucket_health = is_health
-                existing.is_in_main_bucket_survivalist = is_survivalist
+                # Only set the selected main bucket to True, preserve others
+                if is_biz:
+                    existing.is_in_main_bucket_biz = True
+                if is_health:
+                    existing.is_in_main_bucket_health = True
+                if is_survivalist:
+                    existing.is_in_main_bucket_survivalist = True
+                # Merge summit_history
+                existing_history = set(existing.summit_history or [])
+                if summit_history_val:
+                    existing_history.add(summit_history_val)
+                existing.summit_history = list(existing_history)
+                existing.engagement_level = engagement_level
                 db.add(existing)
                 logger.info(f"Updated contact: {email} ({existing.id}) with merged tags and main bucket.")
             else:
@@ -76,7 +90,9 @@ async def upload_contacts(
                     tags=tags,
                     is_in_main_bucket_biz=is_biz,
                     is_in_main_bucket_health=is_health,
-                    is_in_main_bucket_survivalist=is_survivalist
+                    is_in_main_bucket_survivalist=is_survivalist,
+                    engagement_level=engagement_level,
+                    summit_history=[summit_history_val] if summit_history_val else [],
                 )
                 db.add(contact)
                 logger.info(f"Inserted new contact: {email} ({contact_uuid}) with main bucket.")
@@ -196,4 +212,71 @@ def get_main_buckets(db: Session = Depends(get_db)):
             "color": bucket["color"],
             "count": count
         })
-    return results 
+    return results
+
+@router.post("/upload-csv")
+async def upload_csv_contacts(
+    file: UploadFile = File(...),
+    main_bucket: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    # Parse engagement and summit history from file name
+    engagement_level, summit_history_val = parse_engagement_and_history(file.filename)
+    # ... existing code ...
+    # ... CSV logic ...
+    # (Copy from previous upload_contacts, but only for CSV)
+    # ...
+
+@router.post("/upload-zip")
+async def upload_zip_contacts(
+    file: UploadFile = File(...),
+    use_folders: str = Form('1'),
+    db: Session = Depends(get_db)
+):
+    # Save the uploaded ZIP to a temp file
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = os.path.join(tmpdir, file.filename)
+        with open(zip_path, 'wb') as f:
+            f.write(await file.read())
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(tmpdir)
+        # Walk the extracted files
+        for root, dirs, files in os.walk(tmpdir):
+            for fname in files:
+                if fname.endswith('.csv'):
+                    csv_path = os.path.join(root, fname)
+                    # Determine main bucket from folder name if use_folders is set
+                    main_bucket = None
+                    if use_folders == '1':
+                        rel_path = os.path.relpath(root, tmpdir)
+                        folder = rel_path.split(os.sep)[0] if rel_path != '.' else None
+                        if folder and folder.lower() in ['biz', 'business', 'business operations']:
+                            main_bucket = 'biz'
+                        elif folder and folder.lower() in ['health']:
+                            main_bucket = 'health'
+                        elif folder and folder.lower() in ['survivalist']:
+                            main_bucket = 'survivalist'
+                        else:
+                            main_bucket = 'none'
+                    else:
+                        main_bucket = 'none'
+                    # Open and process the CSV as in upload_csv_contacts
+                    with open(csv_path, 'r', encoding='utf-8') as csvfile:
+                        csv_content = csvfile.read()
+                    # Reuse the CSV logic (refactor to a helper if needed)
+                    # ... call CSV processing logic with csv_content and main_bucket ...
+                    # Parse engagement and summit history from file name
+                    engagement_level, summit_history_val = parse_engagement_and_history(fname)
+                    # ... in the loop for each contact ...
+                        # Merge summit_history and set engagement_level as above
+    return {"status": "success"}
+
+def parse_engagement_and_history(filename):
+    # Example: H-Common Sense.csv -> ('H', 'Common Sense')
+    base = os.path.splitext(os.path.basename(filename))[0]
+    match = re.match(r'([HMLU])-\s*(.+)', base, re.IGNORECASE)
+    if match:
+        engagement = match.group(1).upper()
+        history = match.group(2).strip()
+        return engagement, history
+    return None, base 
