@@ -33,9 +33,11 @@ function ContactUpload({ onUploadComplete }: ContactUploadProps) {
         onUploadComplete()
       } else {
         const data = await response.json()
+        console.error('Upload failed:', data)
         toast.error(data.message || 'Upload failed')
       }
     } catch (error) {
+      console.error('Upload failed:', error)
       toast.error('Upload failed')
     } finally {
       setIsUploading(false)

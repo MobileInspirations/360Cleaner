@@ -7,8 +7,12 @@ from ..services.batch_service import BatchService
 from ..services.categorization_service import CategorizationService
 import csv
 from io import StringIO
+import logging
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 @router.post("/upload")
 async def upload_contacts(
@@ -16,7 +20,9 @@ async def upload_contacts(
     db: Session = Depends(get_db)
 ):
     """Upload and process a CSV file of contacts."""
+    logger.info(f"Received upload request: {file.filename}")
     if not file.filename.endswith('.csv'):
+        logger.error("Upload failed: Only CSV files are supported")
         raise HTTPException(400, "Only CSV files are supported")
 
     try:
@@ -40,9 +46,11 @@ async def upload_contacts(
             contacts.append(contact)
         db.bulk_save_objects(contacts)
         db.commit()
+        logger.info(f"Successfully uploaded {len(contacts)} contacts.")
         return {"total": len(contacts), "success": len(contacts)}
     except Exception as e:
         db.rollback()
+        logger.error(f"Upload failed: {str(e)}")
         raise HTTPException(500, str(e))
 
 @router.post("/categorize")
@@ -112,4 +120,44 @@ async def get_contacts(
     return {
         "total": total,
         "contacts": contacts
-    } 
+    }
+
+@router.get("/stats")
+def get_dashboard_stats(db: Session = Depends(get_db)):
+    total_contacts = db.query(Contact).count()
+    unique_categorized = db.query(Contact).filter(Contact.personality_bucket_assignment.isnot(None)).count()
+    categories = db.query(Contact.personality_bucket_assignment).distinct().count()
+    # You can add more stats as needed
+    return {
+        "total_contacts": total_contacts,
+        "unique_categorized": unique_categorized,
+        "categories": categories,
+        # Add more fields as needed
+    }
+
+@router.get("/main-buckets")
+def get_main_buckets(db: Session = Depends(get_db)):
+    buckets = [
+        {"label": "Business Operations", "description": "Business-focused contacts and operations", "color": "blue", "field": "is_in_main_bucket_biz"},
+        {"label": "Health", "description": "Health and wellness related contacts", "color": "green", "field": "is_in_main_bucket_health"},
+        {"label": "Survivalist", "description": "Emergency preparedness and survival contacts", "color": "orange", "field": "is_in_main_bucket_survivalist"},
+        {"label": "Cannot Place", "description": "Contacts that do not match any specific category", "color": "gray", "field": None},
+    ]
+    results = []
+    for bucket in buckets:
+        if bucket["field"]:
+            count = db.query(Contact).filter(getattr(Contact, bucket["field"]) == True).count()
+        else:
+            # Cannot Place: not in any main bucket
+            count = db.query(Contact).filter(
+                (Contact.is_in_main_bucket_biz == False) &
+                (Contact.is_in_main_bucket_health == False) &
+                (Contact.is_in_main_bucket_survivalist == False)
+            ).count()
+        results.append({
+            "label": bucket["label"],
+            "description": bucket["description"],
+            "color": bucket["color"],
+            "count": count
+        })
+    return results 
