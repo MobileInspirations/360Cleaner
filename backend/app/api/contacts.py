@@ -8,6 +8,7 @@ from ..services.categorization_service import CategorizationService
 import csv
 from io import StringIO
 import logging
+import uuid
 
 router = APIRouter()
 
@@ -17,10 +18,11 @@ logging.basicConfig(level=logging.INFO)
 @router.post("/upload")
 async def upload_contacts(
     file: UploadFile = File(...),
+    main_bucket: str = None,
     db: Session = Depends(get_db)
 ):
     """Upload and process a CSV file of contacts."""
-    logger.info(f"Received upload request: {file.filename}")
+    logger.info(f"Received upload request: {file.filename} with main_bucket={main_bucket}")
     if not file.filename.endswith('.csv'):
         logger.error("Upload failed: Only CSV files are supported")
         raise HTTPException(400, "Only CSV files are supported")
@@ -31,22 +33,56 @@ async def upload_contacts(
         csv_file = StringIO(csv_content)
         reader = csv.DictReader(csv_file)
         contacts = []
+        emails_seen = set()
         for row in reader:
             email = row.get('Email', '').strip()
+            if not email or email in emails_seen:
+                logger.warning(f"Duplicate or missing email in upload: {email}. Skipping row.")
+                continue
+            emails_seen.add(email)
             full_name = row.get('First Name', '').strip()
             contact_id = row.get('Contact ID', '').strip()
             tags_raw = row.get('Contact Tags', '')
             tags = [t.strip() for t in tags_raw.split(',') if t.strip()]
-            contact = Contact(
-                id=contact_id if contact_id else None,
-                email=email,
-                full_name=full_name,
-                tags=tags
-            )
-            contacts.append(contact)
-        db.bulk_save_objects(contacts)
+            # Validate or generate UUID
+            try:
+                contact_uuid = uuid.UUID(contact_id) if contact_id else uuid.uuid4()
+            except Exception:
+                contact_uuid = uuid.uuid4()
+            # Upsert by email (email is unique)
+            existing = db.query(Contact).filter(Contact.email == email).first()
+            # Set main bucket flags
+            is_biz = main_bucket == 'biz'
+            is_health = main_bucket == 'health'
+            is_survivalist = main_bucket == 'survivalist'
+            if existing:
+                existing.full_name = full_name
+                # Merge tags, ensuring uniqueness
+                existing_tags = set(existing.tags or [])
+                new_tags = set(tags)
+                merged_tags = list(existing_tags.union(new_tags))
+                existing.tags = merged_tags
+                existing.email = email
+                existing.is_in_main_bucket_biz = is_biz
+                existing.is_in_main_bucket_health = is_health
+                existing.is_in_main_bucket_survivalist = is_survivalist
+                db.add(existing)
+                logger.info(f"Updated contact: {email} ({existing.id}) with merged tags and main bucket.")
+            else:
+                contact = Contact(
+                    id=contact_uuid,
+                    email=email,
+                    full_name=full_name,
+                    tags=tags,
+                    is_in_main_bucket_biz=is_biz,
+                    is_in_main_bucket_health=is_health,
+                    is_in_main_bucket_survivalist=is_survivalist
+                )
+                db.add(contact)
+                logger.info(f"Inserted new contact: {email} ({contact_uuid}) with main bucket.")
+            contacts.append(email)
         db.commit()
-        logger.info(f"Successfully uploaded {len(contacts)} contacts.")
+        logger.info(f"Successfully upserted {len(contacts)} contacts.")
         return {"total": len(contacts), "success": len(contacts)}
     except Exception as e:
         db.rollback()

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import ContactUpload from '../components/ContactUpload'
+import ContactsTable from '../components/ContactsTable'
 
 function Dashboard() {
   const [mainBuckets, setMainBuckets] = useState([
@@ -52,6 +53,8 @@ function Dashboard() {
     export_files: 0,
   })
 
+  const [showContacts, setShowContacts] = useState(false)
+
   useEffect(() => {
     fetch('/api/contacts/stats')
       .then(res => res.json())
@@ -96,7 +99,7 @@ function Dashboard() {
         <h1 className="text-3xl font-bold">Customer Categories Dashboard</h1>
         <div className="flex flex-wrap gap-2">
           <ContactUpload onUploadComplete={handleUploadComplete} />
-          <button className="border px-4 py-2 rounded flex items-center gap-2"><span>👥</span> View Contacts</button>
+          <button className="border px-4 py-2 rounded flex items-center gap-2" onClick={() => setShowContacts(v => !v)}><span>👥</span> View Contacts</button>
           <button className="bg-green-100 text-green-800 px-4 py-2 rounded flex items-center gap-2"><span>⚡</span> Auto Categorize</button>
           <button className="bg-purple-100 text-purple-800 px-4 py-2 rounded flex items-center gap-2"><span>🧠</span> AI Categorize</button>
           <button className="bg-orange-100 text-orange-800 px-4 py-2 rounded flex items-center gap-2"><span>⬇️</span> Export Selected (0)</button>
@@ -188,6 +191,11 @@ function Dashboard() {
           ))}
         </div>
       </div>
+      {showContacts && (
+        <div className="mt-8">
+          <ContactsTable />
+        </div>
+      )}
     </div>
   )
 }

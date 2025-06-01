@@ -11,7 +11,7 @@ app = FastAPI(title="Summit Customer Compass API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Frontend URL
+    allow_origins=["*"],  # For development, allow all. For production, specify your frontend URL.
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
