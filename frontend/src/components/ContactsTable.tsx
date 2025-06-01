@@ -15,6 +15,7 @@ interface ContactsTableProps {
   limit?: number
   mainBucket?: string
   personalityBucket?: string
+  search?: string
 }
 
 function ContactsTable({
@@ -22,6 +23,7 @@ function ContactsTable({
   limit = 10,
   mainBucket,
   personalityBucket,
+  search = '',
 }: ContactsTableProps) {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [total, setTotal] = useState(0)
@@ -56,6 +58,15 @@ function ContactsTable({
     fetchContacts()
   }, [page, limit, mainBucket, personalityBucket])
 
+  // Filter contacts by search string (email or full_name)
+  const filteredContacts = search
+    ? contacts.filter(
+        c =>
+          c.email.toLowerCase().includes(search.toLowerCase()) ||
+          (c.full_name || '').toLowerCase().includes(search.toLowerCase())
+      )
+    : contacts
+
   if (loading) {
     return <div>Loading...</div>
   }
@@ -74,7 +85,7 @@ function ContactsTable({
           </tr>
         </thead>
         <tbody>
-          {contacts.map((contact) => (
+          {filteredContacts.map((contact) => (
             <tr key={contact.id} className="border-b">
               <td className="p-4">{contact.email}</td>
               <td className="p-4">{contact.full_name}</td>
