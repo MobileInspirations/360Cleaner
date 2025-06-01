@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from ..models.contact import Contact
 from typing import List, Dict
+from .categorization_engine import assign_buckets
 import csv
 from io import StringIO
 import uuid
@@ -38,6 +39,24 @@ class BatchService:
         except Exception as e:
             self.db.rollback()
             raise Exception(f"Batch processing failed: {str(e)}")
+
+    async def auto_categorize_contacts(self) -> Dict[str, int]:
+        """Auto-categorize all uncategorized contacts using rule-based logic."""
+        try:
+            contacts = self.db.query(Contact).filter(
+                Contact.main_bucket_assignment.is_(None)
+            ).all()
+            updated = 0
+            for contact in contacts:
+                main_bucket, personality_bucket = assign_buckets(contact.tags or [])
+                contact.main_bucket_assignment = main_bucket
+                contact.personality_bucket_assignment = personality_bucket
+                updated += 1
+            self.db.commit()
+            return {"total": len(contacts), "updated": updated}
+        except Exception as e:
+            self.db.rollback()
+            raise Exception(f"Auto-categorization failed: {str(e)}")
 
     async def get_batch_status(self, batch_id: str) -> Dict:
         """Get the status of a batch processing task."""

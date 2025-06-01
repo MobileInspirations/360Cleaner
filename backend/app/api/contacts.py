@@ -22,12 +22,27 @@ async def upload_contacts(
     try:
         contents = await file.read()
         csv_content = contents.decode()
-        
-        batch_service = BatchService(db)
-        result = await batch_service.process_csv(csv_content)
-        
-        return result
+        csv_file = StringIO(csv_content)
+        reader = csv.DictReader(csv_file)
+        contacts = []
+        for row in reader:
+            email = row.get('Email', '').strip()
+            full_name = row.get('First Name', '').strip()
+            contact_id = row.get('Contact ID', '').strip()
+            tags_raw = row.get('Contact Tags', '')
+            tags = [t.strip() for t in tags_raw.split(',') if t.strip()]
+            contact = Contact(
+                id=contact_id if contact_id else None,
+                email=email,
+                full_name=full_name,
+                tags=tags
+            )
+            contacts.append(contact)
+        db.bulk_save_objects(contacts)
+        db.commit()
+        return {"total": len(contacts), "success": len(contacts)}
     except Exception as e:
+        db.rollback()
         raise HTTPException(500, str(e))
 
 @router.post("/categorize")
@@ -62,6 +77,16 @@ async def get_categorization_status(
         batch_service = BatchService(db)
         status = await batch_service.get_batch_status(task_id)
         return status
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+@router.post("/auto-categorize")
+async def auto_categorize_contacts(db: Session = Depends(get_db)):
+    """Trigger auto-categorization for all uncategorized contacts."""
+    try:
+        batch_service = BatchService(db)
+        result = await batch_service.auto_categorize_contacts()
+        return result
     except Exception as e:
         raise HTTPException(500, str(e))
 
