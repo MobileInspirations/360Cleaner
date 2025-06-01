@@ -13,6 +13,7 @@ import zipfile
 import os
 import tempfile
 import re
+from sqlalchemy import Column, String
 
 router = APIRouter()
 

@@ -52,5 +52,7 @@ class Contact(Base):
     engagement_level = Column(String, nullable=True, index=True)
     summit_history = Column(JSONB, nullable=False, default=list)
 
+    main_bucket_assignment = Column(String, nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now()) 
