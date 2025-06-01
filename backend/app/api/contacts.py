@@ -306,6 +306,7 @@ async def upload_csv_contacts(
 async def upload_zip_contacts(
     file: UploadFile = File(...),
     use_folders: str = Form('1'),
+    main_bucket: str = Form(None),
     db: Session = Depends(get_db)
 ):
     # Save the uploaded ZIP to a temp file
@@ -321,29 +322,27 @@ async def upload_zip_contacts(
                 if fname.endswith('.csv'):
                     csv_path = os.path.join(root, fname)
                     # Determine main bucket from folder name if use_folders is set
-                    main_bucket = None
+                    bucket = None
                     if use_folders == '1':
                         rel_path = os.path.relpath(root, tmpdir)
                         folder = rel_path.split(os.sep)[0] if rel_path != '.' else None
                         if folder and folder.lower() in ['biz', 'business', 'business operations']:
-                            main_bucket = 'biz'
+                            bucket = 'biz'
                         elif folder and folder.lower() in ['health']:
-                            main_bucket = 'health'
+                            bucket = 'health'
                         elif folder and folder.lower() in ['survivalist']:
-                            main_bucket = 'survivalist'
+                            bucket = 'survivalist'
                         else:
-                            main_bucket = 'none'
+                            bucket = 'none'
                     else:
-                        main_bucket = 'none'
+                        bucket = main_bucket or 'none'
                     # Open and process the CSV as in upload_csv_contacts
                     with open(csv_path, 'r', encoding='utf-8') as csvfile:
                         csv_content = csvfile.read()
-                    # Reuse the CSV logic (refactor to a helper if needed)
-                    # ... call CSV processing logic with csv_content and main_bucket ...
-                    # Parse engagement and summit history from file name
-                    engagement_level, summit_history_val = parse_engagement_and_history(fname)
-                    # ... in the loop for each contact ...
-                        # Merge summit_history and set engagement_level as above
+                    # Here you would call the CSV processing logic with csv_content and bucket
+                    # For now, just log the action
+                    logger.info(f"Would process {csv_path} with main_bucket={bucket}")
+                    # TODO: Actually process the CSV as in upload_csv_contacts
     return {"status": "success"}
 
 def parse_engagement_and_history(filename):
