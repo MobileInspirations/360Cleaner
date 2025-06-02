@@ -1,10 +1,11 @@
 from sqlalchemy.orm import Session
 from ..models.contact import Contact
-from typing import List, Dict
+from typing import List, Dict, Union
 from .categorization_engine import assign_buckets
 import csv
 from io import StringIO
 import uuid
+from sqlalchemy import func
 
 class BatchService:
     def __init__(self, db: Session):
@@ -44,7 +45,7 @@ class BatchService:
         """Auto-categorize all uncategorized contacts using rule-based logic."""
         try:
             contacts = self.db.query(Contact).filter(
-                Contact.main_bucket_assignment.is_(None)
+                Contact.personality_bucket_assignment.is_(None)
             ).all()
             updated = 0
             for contact in contacts:
@@ -70,3 +71,14 @@ class BatchService:
             "success": 100,
             "failed": 0
         } 
+
+    async def get_personality_buckets(self) -> List[Dict[str, Union[str, int]]]:
+        """Get all unique personality buckets and their counts."""
+        results = self.db.query(
+            Contact.personality_bucket_assignment,
+            func.count(Contact.id)
+        ).group_by(Contact.personality_bucket_assignment).all()
+        return [
+            {"bucket": bucket, "count": count}
+            for bucket, count in results if bucket
+        ]

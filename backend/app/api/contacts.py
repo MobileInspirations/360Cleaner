@@ -354,4 +354,10 @@ def parse_engagement_and_history(filename):
         engagement = match.group(1).upper()
         history = match.group(2).strip()
         return engagement, history
-    return None, base 
+    return None, base
+
+@router.get("/personality-buckets")
+def get_personality_buckets(db: Session = Depends(get_db)):
+    batch_service = BatchService(db)
+    import asyncio
+    return asyncio.run(batch_service.get_personality_buckets()) 

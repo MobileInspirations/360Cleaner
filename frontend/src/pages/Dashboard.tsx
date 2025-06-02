@@ -31,18 +31,20 @@ function Dashboard() {
     { label: 'VIP Attendees', description: 'High-value summit participants', count: 0, color: 'purple' },
   ]
 
-  const personalityCategories = [
+  const initialPersonalityCategories = [
     { label: 'Digital Marketing & Content Creation Skills', description: 'Marketing and content creation', count: 0, color: 'blue' },
-    { label: 'Entrepreneurship & Business Development', description: 'Business growth and entrepreneurship', count: 70, color: 'gray' },
+    { label: 'Entrepreneurship & Business Development', description: 'Business growth and entrepreneurship', count: 0, color: 'gray' },
     { label: 'Fitness, Nutrition & Weight Management', description: 'Fitness and nutrition focused', count: 0, color: 'gray' },
-    { label: 'Holistic Wellness & Natural Living', description: 'Natural health and wellness enthusiasts', count: 30, color: 'gray' },
+    { label: 'Holistic Wellness & Natural Living', description: 'Natural health and wellness enthusiasts', count: 0, color: 'gray' },
     { label: 'Investing, Finance & Wealth Creation', description: 'Financial education and investing', count: 0, color: 'green' },
     { label: 'Longevity & Regenerative Health', description: 'Anti-aging and regenerative medicine', count: 0, color: 'gray' },
     { label: 'Mental & Emotional Well-being', description: 'Mental health and emotional wellness', count: 0, color: 'gray' },
     { label: 'Self-Reliance & Preparedness', description: 'Self-sufficiency and preparedness', count: 0, color: 'gray' },
     { label: 'Targeted Health Solutions & Disease Management', description: 'Disease-specific health solutions', count: 0, color: 'gray' },
-    { label: 'Women\'s Health & Community', description: 'Women-focused health topics', count: 0, color: 'gray' },
+    { label: "Women's Health & Community", description: "Women-focused health topics", count: 0, color: 'gray' },
   ]
+
+  const [personalityCategories, setPersonalityCategories] = useState(initialPersonalityCategories);
 
   const [selectedMainBucket, setSelectedMainBucket] = useState(0)
   const [selectedCategories, setSelectedCategories] = useState<number[]>([])
@@ -74,6 +76,19 @@ function Dashboard() {
     fetch('/api/contacts/main-buckets')
       .then(res => res.json())
       .then(data => setMainBuckets(data));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/contacts/personality-buckets')
+      .then(res => res.json())
+      .then(backendCounts => {
+        setPersonalityCategories(prev =>
+          prev.map(cat => {
+            const found = backendCounts.find((b: any) => b.bucket === cat.label);
+            return { ...cat, count: found ? found.count : 0 };
+          })
+        );
+      });
   }, []);
 
   // Add a handler to refresh stats and main buckets after upload
