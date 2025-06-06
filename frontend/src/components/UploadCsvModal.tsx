@@ -17,6 +17,7 @@ function UploadCsvModal({ open, onClose, onUploadComplete }: UploadCsvModalProps
   const [file, setFile] = useState<File | null>(null)
   const [mainBucket, setMainBucket] = useState<string>('')
   const [isUploading, setIsUploading] = useState(false)
+  const [mainBucketInCsv, setMainBucketInCsv] = useState(false)
 
   if (!open) return null
 
@@ -27,11 +28,14 @@ function UploadCsvModal({ open, onClose, onUploadComplete }: UploadCsvModalProps
   }
 
   const handleUpload = async () => {
-    if (!file || !mainBucket) return
+    if (!file || (!mainBucketInCsv && !mainBucket)) return
     setIsUploading(true)
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('main_bucket', mainBucket)
+    formData.append('main_bucket_in_csv', mainBucketInCsv ? '1' : '0')
+    if (!mainBucketInCsv) {
+      formData.append('main_bucket', mainBucket)
+    }
     try {
       const response = await fetch('/api/contacts/upload-csv', {
         method: 'POST',
@@ -60,7 +64,11 @@ function UploadCsvModal({ open, onClose, onUploadComplete }: UploadCsvModalProps
           <input type="file" accept=".csv" onChange={handleFileChange} className="mb-2" />
           {file && <div className="text-sm">{file.name}</div>}
         </div>
-        {file && (
+        <div className="mb-4 flex items-center gap-2">
+          <input type="checkbox" id="main-bucket-in-csv" checked={mainBucketInCsv} onChange={e => setMainBucketInCsv(e.target.checked)} />
+          <label htmlFor="main-bucket-in-csv" className="text-sm">Main Bucket field is in the CSV</label>
+        </div>
+        {file && !mainBucketInCsv && (
           <>
             <h3 className="font-semibold mb-2">Main Buckets</h3>
             <div className="grid grid-cols-2 gap-2 mb-4">
@@ -87,7 +95,7 @@ function UploadCsvModal({ open, onClose, onUploadComplete }: UploadCsvModalProps
           <button
             className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
             onClick={handleUpload}
-            disabled={!file || !mainBucket || isUploading}
+            disabled={!file || (!mainBucketInCsv && !mainBucket) || isUploading}
           >
             {isUploading ? 'Uploading...' : 'Upload & Process'}
           </button>

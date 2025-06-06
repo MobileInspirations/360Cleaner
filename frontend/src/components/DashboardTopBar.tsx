@@ -37,6 +37,20 @@ function DashboardTopBar({ onUploadComplete }: DashboardTopBarProps) {
     setCategorizeMessage('');
   };
 
+  const handleExportTags = async () => {
+    const res = await fetch('/api/contacts/tags');
+    const data = await res.json();
+    const tags = data.tags || [];
+    const csv = tags.join(',\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'unique_tags.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
       <h1 className="text-3xl font-bold">Customer Categories Dashboard</h1>
@@ -55,6 +69,7 @@ function DashboardTopBar({ onUploadComplete }: DashboardTopBarProps) {
               <button className="w-full text-left px-4 py-2 hover:bg-gray-100" onClick={() => { setUploadCsvModalOpen(true); setImportOpen(false); }}>Import CSV</button>
               <button className="w-full text-left px-4 py-2 hover:bg-gray-100" onClick={() => { setUploadZipModalOpen(true); setImportOpen(false); }}>Import ZIP</button>
               <button className="w-full text-left px-4 py-2 hover:bg-gray-100">⬇️ Export Selected (0)</button>
+              <button className="w-full text-left px-4 py-2 hover:bg-gray-100" onClick={handleExportTags}>⬇️ Export All Tags</button>
             </div>
           )}
         </div>

@@ -157,15 +157,31 @@ async def get_contacts(
     limit: int = 10,
     main_bucket: Optional[str] = None,
     personality_bucket: Optional[str] = None,
+    tag: Optional[str] = None,
+    sort_field: Optional[str] = "email",
+    sort_dir: Optional[str] = "asc",
+    search: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Get a paginated list of contacts with optional filtering."""
+    """Get a paginated list of contacts with optional filtering, searching, and sorting."""
     query = db.query(Contact)
 
     if main_bucket:
         query = query.filter(Contact.main_bucket_assignment == main_bucket)
     if personality_bucket:
         query = query.filter(Contact.personality_bucket_assignment == personality_bucket)
+    if tag:
+        query = query.filter(Contact.tags.contains([tag]))
+    if search:
+        ilike = f"%{search.lower()}%"
+        query = query.filter(
+            (Contact.email.ilike(ilike)) | (Contact.full_name.ilike(ilike))
+        )
+    if sort_field and hasattr(Contact, sort_field):
+        sort_col = getattr(Contact, sort_field)
+        if sort_dir == "desc":
+            sort_col = sort_col.desc()
+        query = query.order_by(sort_col)
 
     total = query.count()
     contacts = query.offset(skip).limit(limit).all()
@@ -218,10 +234,11 @@ def get_main_buckets(db: Session = Depends(get_db)):
 @router.post("/upload-csv")
 async def upload_csv_contacts(
     file: UploadFile = File(...),
-    main_bucket: str = Form(...),
+    main_bucket: str = Form(None),
+    main_bucket_in_csv: str = Form('0'),
     db: Session = Depends(get_db)
 ):
-    logger.info(f"Received upload-csv request: {file.filename} with main_bucket={main_bucket}")
+    logger.info(f"Received upload-csv request: {file.filename} with main_bucket={main_bucket}, main_bucket_in_csv={main_bucket_in_csv}")
     if not file.filename.endswith('.csv'):
         logger.error("Upload failed: Only CSV files are supported")
         raise HTTPException(400, "Only CSV files are supported")
@@ -240,21 +257,27 @@ async def upload_csv_contacts(
                 logger.warning(f"Duplicate or missing email in upload: {email}. Skipping row.")
                 continue
             emails_seen.add(email)
-            full_name = row.get('First Name', '').strip()
+            full_name = row.get('First Name', '').strip() or row.get('Name', '').strip()
             contact_id = row.get('Contact ID', '').strip()
-            tags_raw = row.get('Contact Tags', '')
+            tags_raw = row.get('Contact Tags', '') or row.get('Tag', '')
             tags = [t.strip() for t in tags_raw.split(',') if t.strip()]
             # Validate or generate UUID
             try:
                 contact_uuid = uuid.UUID(contact_id) if contact_id else uuid.uuid4()
             except Exception:
                 contact_uuid = uuid.uuid4()
+            # Determine main bucket flags
+            if main_bucket_in_csv == '1':
+                main_bucket_val = (row.get('Main Bucket') or '').strip().lower()
+                is_biz = main_bucket_val in ['biz', 'business', 'business operations']
+                is_health = main_bucket_val == 'health'
+                is_survivalist = main_bucket_val == 'survivalist'
+            else:
+                is_biz = main_bucket == 'biz'
+                is_health = main_bucket == 'health'
+                is_survivalist = main_bucket == 'survivalist'
             # Upsert by email (email is unique)
             existing = db.query(Contact).filter(Contact.email == email).first()
-            # Set main bucket flags
-            is_biz = main_bucket == 'biz'
-            is_health = main_bucket == 'health'
-            is_survivalist = main_bucket == 'survivalist'
             if existing:
                 # Merge tags
                 existing_tags = set(existing.tags or [])
@@ -360,4 +383,13 @@ def parse_engagement_and_history(filename):
 def get_personality_buckets(db: Session = Depends(get_db)):
     batch_service = BatchService(db)
     import asyncio
-    return asyncio.run(batch_service.get_personality_buckets()) 
+    return asyncio.run(batch_service.get_personality_buckets())
+
+@router.get("/tags")
+def get_all_tags(db: Session = Depends(get_db)):
+    all_tags = db.query(Contact.tags).all()
+    tag_set = set()
+    for tags in all_tags:
+        if tags and tags[0]:
+            tag_set.update(tags[0])
+    return {"tags": sorted(tag_set)} 

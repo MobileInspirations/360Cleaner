@@ -23,11 +23,33 @@ function ContactsTable({
   limit = 10,
   mainBucket,
   personalityBucket,
-  search = '',
+  search: parentSearch = '',
 }: ContactsTableProps) {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [allTags, setAllTags] = useState<string[]>([])
+  const [selectedTag, setSelectedTag] = useState('')
+  const [sortField, setSortField] = useState('email')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [search, setSearch] = useState(parentSearch)
+
+  // Fetch all unique tags for the dropdown
+  useEffect(() => {
+    const fetchTags = async () => {
+      try {
+        const response = await fetch('/api/contacts?limit=10000')
+        const data = await response.json()
+        if (response.ok) {
+          const tags = Array.from(new Set(data.contacts.flatMap((c: Contact) => c.tags || []))) as string[];
+          setAllTags(tags.sort())
+        }
+      } catch (e) {
+        setAllTags([])
+      }
+    }
+    fetchTags()
+  }, [])
 
   useEffect(() => {
     const fetchContacts = async () => {
@@ -36,14 +58,15 @@ function ContactsTable({
         const params = new URLSearchParams({
           skip: String((page - 1) * limit),
           limit: String(limit),
+          sort_field: sortField,
+          sort_dir: sortDir,
         })
-
         if (mainBucket) params.append('main_bucket', mainBucket)
         if (personalityBucket) params.append('personality_bucket', personalityBucket)
-
+        if (selectedTag) params.append('tag', selectedTag)
+        if (search) params.append('search', search)
         const response = await fetch(`/api/contacts?${params}`)
         const data = await response.json()
-
         if (response.ok) {
           setContacts(data.contacts)
           setTotal(data.total)
@@ -54,18 +77,17 @@ function ContactsTable({
         setLoading(false)
       }
     }
-
     fetchContacts()
-  }, [page, limit, mainBucket, personalityBucket])
+  }, [page, limit, mainBucket, personalityBucket, selectedTag, sortField, sortDir, search])
 
-  // Filter contacts by search string (email or full_name)
-  const filteredContacts = search
-    ? contacts.filter(
-        c =>
-          c.email.toLowerCase().includes(search.toLowerCase()) ||
-          (c.full_name || '').toLowerCase().includes(search.toLowerCase())
-      )
-    : contacts
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
 
   if (loading) {
     return <div>Loading...</div>
@@ -73,19 +95,48 @@ function ContactsTable({
 
   return (
     <div className="overflow-x-auto">
+      <div className="flex items-center gap-4 mb-4">
+        <input
+          type="text"
+          placeholder="Search email or name..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="border rounded px-2 py-1"
+        />
+        <select
+          value={selectedTag}
+          onChange={e => setSelectedTag(e.target.value)}
+          className="border rounded px-2 py-1"
+        >
+          <option value="">All Tags</option>
+          {allTags.map(tag => (
+            <option key={tag} value={tag}>{tag}</option>
+          ))}
+        </select>
+      </div>
       <table className="w-full">
         <thead>
           <tr className="border-b">
-            <th className="text-left p-4">Email</th>
-            <th className="text-left p-4">Name</th>
-            <th className="text-left p-4">Company</th>
-            <th className="text-left p-4">Main Bucket</th>
-            <th className="text-left p-4">Personality Bucket</th>
+            <th className="text-left p-4 cursor-pointer" onClick={() => handleSort('email')}>
+              Email {sortField === 'email' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </th>
+            <th className="text-left p-4 cursor-pointer" onClick={() => handleSort('full_name')}>
+              Name {sortField === 'full_name' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </th>
+            <th className="text-left p-4 cursor-pointer" onClick={() => handleSort('company')}>
+              Company {sortField === 'company' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </th>
+            <th className="text-left p-4 cursor-pointer" onClick={() => handleSort('main_bucket_assignment')}>
+              Main Bucket {sortField === 'main_bucket_assignment' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </th>
+            <th className="text-left p-4 cursor-pointer" onClick={() => handleSort('personality_bucket_assignment')}>
+              Personality Bucket {sortField === 'personality_bucket_assignment' ? (sortDir === 'asc' ? '▲' : '▼') : ''}
+            </th>
             <th className="text-left p-4">Tags</th>
           </tr>
         </thead>
         <tbody>
-          {filteredContacts.map((contact) => (
+          {contacts.map((contact) => (
             <tr key={contact.id} className="border-b">
               <td className="p-4">{contact.email}</td>
               <td className="p-4">{contact.full_name}</td>
