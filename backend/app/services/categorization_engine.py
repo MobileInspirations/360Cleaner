@@ -1,95 +1,57 @@
 import os
 import csv
 from collections import defaultdict
-from typing import List, Dict, Tuple
-from ..models.contact import Contact
 
-# Get the directory of the current file
+# Path to the mapping CSV
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CATEGORIZATION_CSV_PATH = os.path.abspath(os.path.join(BASE_DIR, '..', 'Knowledgebase', 'tagsandsummitsandbuckets.csv'))
 
-# Build the path to the new categorization CSV file
-CATEGORIZATION_CSV_PATH = os.path.join(BASE_DIR, '..', 'Knowledgebase', 'tagsandsummitsandbuckets.csv')
-CATEGORIZATION_CSV_PATH = os.path.abspath(CATEGORIZATION_CSV_PATH)
+# Load tag to personality bucket mapping
+_tag_to_personality_bucket = None
+_tag_weight = None
 
-# Load tag to personality bucket mapping from CSV
-tag_to_personality_bucket: Dict[str, str] = {}
-with open(CATEGORIZATION_CSV_PATH, newline='', encoding='utf-8') as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        tag = (row.get('Tag') or '').strip().lower()
-        personality_bucket = (row.get('Personality_Bucket') or '').strip()
-        if tag and personality_bucket:
-            tag_to_personality_bucket[tag] = personality_bucket
+def _load_tag_mapping():
+    global _tag_to_personality_bucket, _tag_weight
+    _tag_to_personality_bucket = {}
+    _tag_weight = {}
+    with open(CATEGORIZATION_CSV_PATH, newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            tag = (row.get('Tag') or '').strip().lower()
+            personality_bucket = (row.get('Personality_Bucket') or '').strip()
+            weight = row.get('Weight')
+            try:
+                weight = int(weight)
+            except (TypeError, ValueError):
+                weight = 1
+            if tag and personality_bucket:
+                _tag_to_personality_bucket[tag] = personality_bucket
+                _tag_weight[tag] = weight
 
-# Main bucket logic (can be extended to use a similar CSV if needed)
-MAIN_BUCKET_KEYWORDS = {
-    'Business Operations': [
-        {'keyword': 'business', 'weight': 1},
-        {'keyword': 'operations', 'weight': 1},
-        {'keyword': 'leadership', 'weight': 1},
-    ],
-    'Health': [
-        {'keyword': 'health', 'weight': 1},
-        {'keyword': 'wellness', 'weight': 1},
-        {'keyword': 'medical', 'weight': 1},
-    ],
-    'Survivalist': [
-        {'keyword': 'survival', 'weight': 1},
-        {'keyword': 'emergency', 'weight': 1},
-        {'keyword': 'preparedness', 'weight': 1},
-    ],
-}
-
-DEFAULT_MAIN_BUCKET = 'Business Operations'
-DEFAULT_PERSONALITY_BUCKET = 'Entrepreneurship & Business Development'
-CANNOT_PLACE = 'Cannot Place'
-UNPLACEABLE_HEALTH = 'Unplaceable Health'
-UNPLACEABLE_BUSINESS = 'Unplaceable Business'
-UNPLACEABLE_SURVIVALIST = 'Unplaceable Survivalist'
-NED_HEALTH = 'NED Health'
-NED_BUSINESS = 'NED Business'
-NED_SURVIVALIST = 'NED Survivalist'
-
-
-def score_main_bucket(tags: List[str]) -> str:
-    scores = {bucket: 0 for bucket in MAIN_BUCKET_KEYWORDS}
-    for tag in tags:
-        tag_lower = tag.lower()
-        for bucket, keywords in MAIN_BUCKET_KEYWORDS.items():
-            for kw in keywords:
-                if kw['keyword'] in tag_lower:
-                    scores[bucket] += kw['weight']
-    max_score = max(scores.values())
-    if max_score == 0:
-        return DEFAULT_MAIN_BUCKET if tags else CANNOT_PLACE
-    # Tie-breaking: pick the first bucket with the max score
-    return [b for b, s in scores.items() if s == max_score][0]
-
-
-def assign_personality_bucket(tags: List[str], main_bucket: str) -> str:
+# Assign personality bucket based on tags and main bucket
+# Usage: assign_buckets(tags: list, main_bucket: str) -> tuple
+# Returns (None, personality_bucket)
+def assign_buckets(tags: list, main_bucket: str = None) -> tuple:
+    global _tag_to_personality_bucket, _tag_weight
+    if _tag_to_personality_bucket is None:
+        _load_tag_mapping()
     scores = defaultdict(int)
-    for tag in tags:
-        tag_key = tag.strip().lower()
-        bucket = tag_to_personality_bucket.get(tag_key)
-        if bucket and bucket not in ["To Be Classified", "", None]:
-            scores[bucket] += 1  # 1 point per matching tag
+    tags_lower = [t.strip().lower() for t in tags]
+    for tag in tags_lower:
+        bucket = _tag_to_personality_bucket.get(tag)
+        weight = _tag_weight.get(tag, 1)
+        if bucket:
+            scores[bucket] += weight
     if not scores:
-        # Assign to NED bucket based on main bucket
-        if main_bucket == 'Health':
-            return NED_HEALTH
-        elif main_bucket == 'Business Operations':
-            return NED_BUSINESS
-        elif main_bucket == 'Survivalist':
-            return NED_SURVIVALIST
+        # Assign to NED bucket based on main_bucket
+        if main_bucket == "Health":
+            return (None, "NED Health")
+        elif main_bucket == "Business Operations":
+            return (None, "NED Business")
+        elif main_bucket == "Survivalist":
+            return (None, "NED Survivalist")
         else:
-            return CANNOT_PLACE
-    # Return the bucket with the highest score
+            return (None, "Cannot Place")
     max_score = max(scores.values())
     top_buckets = [b for b, s in scores.items() if s == max_score]
-    return sorted(top_buckets)[0]  # Tie-breaker: alphabetical
-
-
-def assign_buckets(tags: List[str]) -> Tuple[str, str]:
-    main_bucket = score_main_bucket(tags)
-    personality_bucket = assign_personality_bucket(tags, main_bucket)
-    return main_bucket, personality_bucket 
+    return (None, sorted(top_buckets)[0])

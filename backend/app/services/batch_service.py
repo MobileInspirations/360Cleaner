@@ -51,7 +51,7 @@ class BatchService:
             updated = 0
             for contact in contacts:
                 # Only update personality_bucket_assignment, do not change main_bucket_assignment
-                _, personality_bucket = assign_buckets(contact.tags or [])
+                _, personality_bucket = assign_buckets(contact.tags or [], contact.main_bucket_assignment)
                 contact.personality_bucket_assignment = personality_bucket
                 updated += 1
             self.db.commit()

@@ -14,7 +14,7 @@ class CategorizationService:
         try:
             updated = 0
             for contact in contacts:
-                main_bucket, personality_bucket = assign_buckets(contact.tags or [])
+                main_bucket, personality_bucket = assign_buckets(contact.tags or [], contact.main_bucket_assignment)
                 contact.main_bucket_assignment = main_bucket
                 contact.personality_bucket_assignment = personality_bucket
                 updated += 1

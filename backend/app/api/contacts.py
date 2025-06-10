@@ -17,6 +17,7 @@ from sqlalchemy import Column, String
 from sqlalchemy import or_
 import io
 from fastapi.responses import StreamingResponse
+from sqlalchemy.inspection import inspect
 
 router = APIRouter()
 
@@ -84,6 +85,8 @@ async def upload_contacts(
                     existing_history.add(summit_history_val)
                 existing.summit_history = list(existing_history)
                 existing.engagement_level = engagement_level
+                existing.email_state = email_state
+                existing.email_sub_state = email_sub_state
                 db.add(existing)
                 logger.info(f"Updated contact: {email} ({existing.id}) with merged tags and main bucket.")
             else:
@@ -96,6 +99,8 @@ async def upload_contacts(
                     is_in_main_bucket_health=is_health,
                     is_in_main_bucket_survivalist=is_survivalist,
                     engagement_level=engagement_level,
+                    email_state=email_state,
+                    email_sub_state=email_sub_state,
                     summit_history=[summit_history_val] if summit_history_val else [],
                 )
                 db.add(contact)
@@ -304,6 +309,10 @@ async def upload_csv_contacts(
                     # Only append if not already present
                     if summit_history_val not in existing.summit_history:
                         existing.summit_history.append(summit_history_val)
+                if email_state:
+                    existing.email_state = email_state
+                if email_sub_state:
+                    existing.email_sub_state = email_sub_state
                 db.add(existing)
                 logger.info(f"Updated contact: {email} ({existing.id}) with merged tags and main bucket.")
             else:
@@ -316,6 +325,8 @@ async def upload_csv_contacts(
                     is_in_main_bucket_health=is_health,
                     is_in_main_bucket_survivalist=is_survivalist,
                     engagement_level=engagement_level,
+                    email_state=email_state,
+                    email_sub_state=email_sub_state,
                     summit_history=[summit_history_val] if summit_history_val else [],
                 )
                 db.add(contact)
@@ -403,39 +414,38 @@ def clear_personality_buckets(db: Session = Depends(get_db)):
     db.commit()
     return {"status": "success", "message": "All personality bucket assignments cleared."}
 
+@router.get("/export-fields")
+def get_exportable_fields():
+    # Return all column names except id
+    from ..models.contact import Contact
+    mapper = inspect(Contact)
+    fields = [col.key for col in mapper.attrs if col.key != "id"]
+    return {"fields": fields}
+
 @router.post("/export")
-def export_contacts(buckets: dict, db: Session = Depends(get_db)):
-    # Get contacts that match any of the selected buckets
+def export_contacts(data: dict, db: Session = Depends(get_db)):
+    buckets = data.get("buckets", [])
+    fields = data.get("fields", [
+        "email", "full_name", "company", "main_bucket_assignment",
+        "personality_bucket_assignment", "tags", "summit_history"
+    ])
     contacts = db.query(Contact).filter(
         or_(
-            Contact.main_bucket_assignment.in_(buckets["buckets"]),
-            Contact.personality_bucket_assignment.in_(buckets["buckets"])
+            Contact.main_bucket_assignment.in_(buckets),
+            Contact.personality_bucket_assignment.in_(buckets)
         )
     ).all()
-    
-    # Create CSV in memory
     output = io.StringIO()
     writer = csv.writer(output)
-    
-    # Write header
-    writer.writerow([
-        "Email", "Full Name", "Company", "Main Bucket", 
-        "Personality Bucket", "Tags", "Summit History"
-    ])
-    
-    # Write data
+    writer.writerow([f.replace("_", " ").title() for f in fields])
     for contact in contacts:
-        writer.writerow([
-            contact.email,
-            contact.full_name,
-            contact.company,
-            contact.main_bucket_assignment,
-            contact.personality_bucket_assignment,
-            ",".join(contact.tags) if contact.tags else "",
-            ",".join(contact.summit_history) if contact.summit_history else ""
-        ])
-    
-    # Create response
+        row = []
+        for f in fields:
+            val = getattr(contact, f, "")
+            if isinstance(val, list):
+                val = ",".join(val)
+            row.append(val)
+        writer.writerow(row)
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
