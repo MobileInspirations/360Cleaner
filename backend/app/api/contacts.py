@@ -14,6 +14,9 @@ import os
 import tempfile
 import re
 from sqlalchemy import Column, String
+from sqlalchemy import or_
+import io
+from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
@@ -392,4 +395,50 @@ def get_all_tags(db: Session = Depends(get_db)):
     for tags in all_tags:
         if tags and tags[0]:
             tag_set.update(tags[0])
-    return {"tags": sorted(tag_set)} 
+    return {"tags": sorted(tag_set)}
+
+@router.post("/clear-personality-buckets")
+def clear_personality_buckets(db: Session = Depends(get_db)):
+    db.query(Contact).update({Contact.personality_bucket_assignment: None})
+    db.commit()
+    return {"status": "success", "message": "All personality bucket assignments cleared."}
+
+@router.post("/export")
+def export_contacts(buckets: dict, db: Session = Depends(get_db)):
+    # Get contacts that match any of the selected buckets
+    contacts = db.query(Contact).filter(
+        or_(
+            Contact.main_bucket_assignment.in_(buckets["buckets"]),
+            Contact.personality_bucket_assignment.in_(buckets["buckets"])
+        )
+    ).all()
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        "Email", "Full Name", "Company", "Main Bucket", 
+        "Personality Bucket", "Tags", "Summit History"
+    ])
+    
+    # Write data
+    for contact in contacts:
+        writer.writerow([
+            contact.email,
+            contact.full_name,
+            contact.company,
+            contact.main_bucket_assignment,
+            contact.personality_bucket_assignment,
+            ",".join(contact.tags) if contact.tags else "",
+            ",".join(contact.summit_history) if contact.summit_history else ""
+        ])
+    
+    # Create response
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=contacts.csv"}
+    ) 

@@ -1,44 +1,25 @@
+import os
 import csv
 from collections import defaultdict
 from typing import List, Dict, Tuple
-import os
 from ..models.contact import Contact
 
 # Get the directory of the current file
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Build the path to the CSV file
-WEIGHTER_CSV_PATH = os.path.join(BASE_DIR, '..', 'Knowledgebase', 'Weighter.csv')
-WEIGHTER_CSV_PATH = os.path.abspath(WEIGHTER_CSV_PATH)
+# Build the path to the new categorization CSV file
+CATEGORIZATION_CSV_PATH = os.path.join(BASE_DIR, '..', 'Knowledgebase', 'tagsandsummitsandbuckets.csv')
+CATEGORIZATION_CSV_PATH = os.path.abspath(CATEGORIZATION_CSV_PATH)
 
-# Load tag weights from CSV
-tag_weights: Dict[str, Tuple[str, float]] = {}
-try:
-    with open(WEIGHTER_CSV_PATH, newline='', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        # Print headers for debugging
-        print("CSV Headers:", reader.fieldnames)
-        
-        # Map column names (case-insensitive)
-        tag_col = next((col for col in reader.fieldnames if col.lower() == 'tag'), None)
-        bucket_col = next((col for col in reader.fieldnames if 'personality' in col.lower() and 'bucket' in col.lower()), None)
-        weight_col = next((col for col in reader.fieldnames if col.lower() == 'weight'), None)
-        
-        if not all([tag_col, bucket_col, weight_col]):
-            raise ValueError(f"Missing required columns. Found: {reader.fieldnames}")
-        
-        for row in reader:
-            tag = row[tag_col].strip()
-            bucket = row[bucket_col].strip()
-            try:
-                weight = float(row[weight_col])
-            except (ValueError, TypeError):
-                weight = 1.0  # Default weight if conversion fails
-            tag_weights[tag] = (bucket, weight)
-except Exception as e:
-    print(f"Error loading Weighter.csv: {str(e)}")
-    print(f"File path: {WEIGHTER_CSV_PATH}")
-    raise
+# Load tag to personality bucket mapping from CSV
+tag_to_personality_bucket: Dict[str, str] = {}
+with open(CATEGORIZATION_CSV_PATH, newline='', encoding='utf-8') as csvfile:
+    reader = csv.DictReader(csvfile)
+    for row in reader:
+        tag = (row.get('Tag') or '').strip().lower()
+        personality_bucket = (row.get('Personality_Bucket') or '').strip()
+        if tag and personality_bucket:
+            tag_to_personality_bucket[tag] = personality_bucket
 
 # Main bucket logic (can be extended to use a similar CSV if needed)
 MAIN_BUCKET_KEYWORDS = {
@@ -65,6 +46,9 @@ CANNOT_PLACE = 'Cannot Place'
 UNPLACEABLE_HEALTH = 'Unplaceable Health'
 UNPLACEABLE_BUSINESS = 'Unplaceable Business'
 UNPLACEABLE_SURVIVALIST = 'Unplaceable Survivalist'
+NED_HEALTH = 'NED Health'
+NED_BUSINESS = 'NED Business'
+NED_SURVIVALIST = 'NED Survivalist'
 
 
 def score_main_bucket(tags: List[str]) -> str:
@@ -86,22 +70,23 @@ def assign_personality_bucket(tags: List[str], main_bucket: str) -> str:
     scores = defaultdict(int)
     for tag in tags:
         tag_key = tag.strip().lower()
-        if tag_key in tag_weights:
-            bucket, weight = tag_weights[tag_key]
-            if bucket and bucket not in ["To Be Classified", "", None]:
-                scores[bucket] += weight
+        bucket = tag_to_personality_bucket.get(tag_key)
+        if bucket and bucket not in ["To Be Classified", "", None]:
+            scores[bucket] += 1  # 1 point per matching tag
     if not scores:
-        # Assign to unplaceable bucket based on main bucket
+        # Assign to NED bucket based on main bucket
         if main_bucket == 'Health':
-            return UNPLACEABLE_HEALTH
+            return NED_HEALTH
         elif main_bucket == 'Business Operations':
-            return UNPLACEABLE_BUSINESS
+            return NED_BUSINESS
         elif main_bucket == 'Survivalist':
-            return UNPLACEABLE_SURVIVALIST
+            return NED_SURVIVALIST
         else:
             return CANNOT_PLACE
     # Return the bucket with the highest score
-    return max(scores, key=scores.get)
+    max_score = max(scores.values())
+    top_buckets = [b for b, s in scores.items() if s == max_score]
+    return sorted(top_buckets)[0]  # Tie-breaker: alphabetical
 
 
 def assign_buckets(tags: List[str]) -> Tuple[str, str]:

@@ -47,10 +47,11 @@ class BatchService:
             contacts = self.db.query(Contact).filter(
                 Contact.personality_bucket_assignment.is_(None)
             ).all()
+            print(f"Found {len(contacts)} contacts to categorize.")
             updated = 0
             for contact in contacts:
-                main_bucket, personality_bucket = assign_buckets(contact.tags or [])
-                contact.main_bucket_assignment = main_bucket
+                # Only update personality_bucket_assignment, do not change main_bucket_assignment
+                _, personality_bucket = assign_buckets(contact.tags or [])
                 contact.personality_bucket_assignment = personality_bucket
                 updated += 1
             self.db.commit()

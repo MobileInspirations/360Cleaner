@@ -4,9 +4,13 @@ import UploadZipModal from './UploadZipModal'
 
 type DashboardTopBarProps = {
   onUploadComplete: () => void
+  selectedMainBucket: number
+  selectedPersonality: number[]
+  mainBuckets: { label: string; count: number }[]
+  personalityCategories: { label: string; count: number }[]
 }
 
-function DashboardTopBar({ onUploadComplete }: DashboardTopBarProps) {
+function DashboardTopBar({ onUploadComplete, selectedMainBucket, selectedPersonality, mainBuckets, personalityCategories }: DashboardTopBarProps) {
   const [importOpen, setImportOpen] = useState(false)
   const [categorizeOpen, setCategorizeOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -20,7 +24,7 @@ function DashboardTopBar({ onUploadComplete }: DashboardTopBarProps) {
     setCategorizeMessage('Categorizing contacts...');
     setCategorizeOpen(false);
     try {
-      const res = await fetch('/api/contacts/categorize', { method: 'POST' });
+      const res = await fetch('/api/contacts/auto-categorize', { method: 'POST' });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setCategorizeStatus('success');
@@ -51,6 +55,45 @@ function DashboardTopBar({ onUploadComplete }: DashboardTopBarProps) {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportSelected = async () => {
+    const selectedBuckets = [];
+    if (selectedMainBucket >= 0) {
+      selectedBuckets.push(mainBuckets[selectedMainBucket].label);
+    }
+    selectedPersonality.forEach(idx => {
+      selectedBuckets.push(personalityCategories[idx].label);
+    });
+
+    if (selectedBuckets.length === 0) {
+      alert('Please select at least one bucket to export');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/contacts/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ buckets: selectedBuckets }),
+      });
+      
+      if (!res.ok) throw new Error('Export failed');
+      
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'selected_contacts.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Failed to export contacts');
+    }
+  };
+
+  const selectedCount = (selectedMainBucket >= 0 ? 1 : 0) + selectedPersonality.length;
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
       <h1 className="text-3xl font-bold">Customer Categories Dashboard</h1>
@@ -68,7 +111,7 @@ function DashboardTopBar({ onUploadComplete }: DashboardTopBarProps) {
             <div className="absolute z-10 mt-2 w-56 bg-white border rounded shadow-lg">
               <button className="w-full text-left px-4 py-2 hover:bg-gray-100" onClick={() => { setUploadCsvModalOpen(true); setImportOpen(false); }}>Import CSV</button>
               <button className="w-full text-left px-4 py-2 hover:bg-gray-100" onClick={() => { setUploadZipModalOpen(true); setImportOpen(false); }}>Import ZIP</button>
-              <button className="w-full text-left px-4 py-2 hover:bg-gray-100">⬇️ Export Selected (0)</button>
+              <button className="w-full text-left px-4 py-2 hover:bg-gray-100" onClick={handleExportSelected}>⬇️ Export Selected ({selectedCount})</button>
               <button className="w-full text-left px-4 py-2 hover:bg-gray-100" onClick={handleExportTags}>⬇️ Export All Tags</button>
             </div>
           )}

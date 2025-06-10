@@ -3,7 +3,6 @@ import ContactUpload from '../components/ContactUpload'
 import DashboardTopBar from '../components/DashboardTopBar'
 import DashboardSummaryCards from '../components/DashboardSummaryCards'
 import MainBuckets from '../components/MainBuckets'
-import CustomerCategories from '../components/CustomerCategories'
 import PersonalityCategories from '../components/PersonalityCategories'
 
 function Dashboard() {
@@ -13,23 +12,6 @@ function Dashboard() {
     { label: 'Survivalist', description: '', count: 0, color: 'orange' },
     { label: 'Cannot Place', description: '', count: 0, color: 'gray' },
   ]);
-
-  const customerCategories = [
-    { label: 'Business Operations', description: 'Business-focused contacts and operations', count: 0, color: 'blue' },
-    { label: 'Cannot Place', description: 'Contacts that do not match any specific category', count: 0, color: 'gray' },
-    { label: 'Financial Services', description: 'Finance industry participants', count: 0, color: 'green' },
-    { label: 'Health', description: 'Health and wellness related contacts', count: 0, color: 'green' },
-    { label: 'Healthcare Professionals', description: 'Healthcare summit attendees', count: 0, color: 'red' },
-    { label: 'Inactive Contacts', description: 'No activity in 12+ months', count: 0, color: 'gray' },
-    { label: 'Industry Leaders', description: 'C-level executives', count: 0, color: 'orange' },
-    { label: 'Marketing Professionals', description: 'Marketing summit attendees', count: 0, color: 'pink' },
-    { label: 'Multi-Event Participants', description: 'Attended 3+ summits', count: 0, color: 'blue' },
-    { label: 'New Prospects', description: 'Never attended events', count: 0, color: 'gray' },
-    { label: 'Recent Registrants', description: 'Registered in last 6 months', count: 0, color: 'green' },
-    { label: 'Survivalist', description: 'Emergency preparedness and survival contacts', count: 0, color: 'orange' },
-    { label: 'Tech Enthusiasts', description: 'Technology-focused events', count: 0, color: 'cyan' },
-    { label: 'VIP Attendees', description: 'High-value summit participants', count: 0, color: 'purple' },
-  ]
 
   const initialPersonalityCategories = [
     { label: 'Digital Marketing & Content Creation Skills', description: 'Marketing and content creation', count: 0, color: 'blue' },
@@ -42,12 +24,14 @@ function Dashboard() {
     { label: 'Self-Reliance & Preparedness', description: 'Self-sufficiency and preparedness', count: 0, color: 'gray' },
     { label: 'Targeted Health Solutions & Disease Management', description: 'Disease-specific health solutions', count: 0, color: 'gray' },
     { label: "Women's Health & Community", description: "Women-focused health topics", count: 0, color: 'gray' },
+    { label: 'NED Health', description: 'Not enough data for Health', count: 0, color: 'green' },
+    { label: 'NED Business', description: 'Not enough data for Business', count: 0, color: 'blue' },
+    { label: 'NED Survivalist', description: 'Not enough data for Survivalist', count: 0, color: 'orange' },
   ]
 
   const [personalityCategories, setPersonalityCategories] = useState(initialPersonalityCategories);
 
   const [selectedMainBucket, setSelectedMainBucket] = useState(0)
-  const [selectedCategories, setSelectedCategories] = useState<number[]>([])
   const [selectedPersonality, setSelectedPersonality] = useState<number[]>([])
 
   // New: State for real stats
@@ -101,12 +85,42 @@ function Dashboard() {
       .then(data => setMainBuckets(data))
   }
 
+  // Add clear personality buckets handler
+  const handleClearPersonalityBuckets = async () => {
+    if (!window.confirm('Are you sure you want to clear all personality bucket assignments?')) return;
+    await fetch('/api/contacts/clear-personality-buckets', { method: 'POST' });
+    // Refresh personality categories
+    fetch('/api/contacts/personality-buckets')
+      .then(res => res.json())
+      .then(backendCounts => {
+        setPersonalityCategories(prev =>
+          prev.map(cat => {
+            const found = backendCounts.find((b: any) => b.bucket === cat.label);
+            return { ...cat, count: found ? found.count : 0 };
+          })
+        );
+      });
+  };
+
   return (
     <div className="min-h-screen bg-background px-8 py-6">
-      <DashboardTopBar onUploadComplete={handleUploadComplete} />
+      <DashboardTopBar 
+        onUploadComplete={handleUploadComplete} 
+        selectedMainBucket={selectedMainBucket}
+        selectedPersonality={selectedPersonality}
+        mainBuckets={mainBuckets}
+        personalityCategories={personalityCategories}
+      />
       <DashboardSummaryCards stats={stats} />
       <MainBuckets mainBuckets={mainBuckets} selected={selectedMainBucket} onSelect={setSelectedMainBucket} />
-      <CustomerCategories categories={customerCategories} selected={selectedCategories} onSelect={setSelectedCategories} />
+      <div className="mb-4 flex justify-end">
+        <button
+          className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+          onClick={handleClearPersonalityBuckets}
+        >
+          Clear All Personality Buckets
+        </button>
+      </div>
       <PersonalityCategories categories={personalityCategories} selected={selectedPersonality} onSelect={setSelectedPersonality} />
     </div>
   )
