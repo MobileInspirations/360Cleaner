@@ -258,7 +258,7 @@ async def upload_csv_contacts(
         contacts = []
         emails_seen = set()
         # Parse engagement and summit history from file name
-        engagement_level, summit_history_val = parse_engagement_and_history(file.filename)
+        engagement_level_file, summit_history_val = parse_engagement_and_history(file.filename)
         for row in reader:
             email = row.get('Email', '').strip()
             if not email or email in emails_seen:
@@ -295,6 +295,9 @@ async def upload_csv_contacts(
                 existing.is_in_main_bucket_biz = is_biz
                 existing.is_in_main_bucket_health = is_health
                 existing.is_in_main_bucket_survivalist = is_survivalist
+                engagement_level = row.get('Engagement') or row.get('Engagement Level') or engagement_level_file
+                email_state = row.get('Email State')
+                email_sub_state = row.get('Email Sub-State')
                 if engagement_level:
                     existing.engagement_level = engagement_level
                 if summit_history_val:
@@ -451,4 +454,17 @@ def export_contacts(data: dict, db: Session = Depends(get_db)):
         iter([output.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=contacts.csv"}
-    ) 
+    )
+
+@router.get("/tags-with-counts")
+def get_tags_with_counts(db: Session = Depends(get_db)):
+    all_tags = db.query(Contact.tags).all()
+    tag_counts = {}
+    for tags in all_tags:
+        if tags and tags[0]:
+            for tag in tags[0]:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+    tag_count_list = [
+        {"tag": tag, "count": count} for tag, count in sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))
+    ]
+    return {"tags": tag_count_list} 

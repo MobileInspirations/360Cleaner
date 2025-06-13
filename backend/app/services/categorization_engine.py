@@ -17,6 +17,7 @@ def _load_tag_mapping():
     with open(CATEGORIZATION_CSV_PATH, newline='', encoding='utf-8') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
+            email = row.get('Email', '').strip()
             tag = (row.get('Tag') or '').strip().lower()
             personality_bucket = (row.get('Personality_Bucket') or '').strip()
             weight = row.get('Weight')
@@ -24,6 +25,9 @@ def _load_tag_mapping():
                 weight = int(weight)
             except (TypeError, ValueError):
                 weight = 1
+            engagement_level = row.get('Engagement') or row.get('Engagement Level')
+            email_state = row.get('Email State')
+            email_sub_state = row.get('Email Sub-State')
             if tag and personality_bucket:
                 _tag_to_personality_bucket[tag] = personality_bucket
                 _tag_weight[tag] = weight
